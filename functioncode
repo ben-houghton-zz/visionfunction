@@ -1,0 +1,89 @@
+{
+    "url": "http://www.thebarn.org.uk/files/9215/1056/2801/Curry1.png"
+}
+
+
+#r "System.Web"
+
+using System;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Net.Http;
+using System.Web;
+
+
+public static async Task<HttpResponseMessage> Run(HttpRequestMessage req, TraceWriter log)
+{
+    log.Info("C# HTTP trigger function processed a request.");
+
+    // parse query parameter
+    string url = req.GetQueryNameValuePairs()
+        .FirstOrDefault(q => string.Compare(q.Key, "url", true) == 0)
+        .Value;
+
+    if (url == null)
+    {
+        // Get request body
+        dynamic data = await req.Content.ReadAsAsync<object>();
+        url = data?.url;
+    }
+
+    var response =  AnalyseImage(url, log);
+
+    return url == null
+        ? req.CreateResponse(HttpStatusCode.BadRequest, "Please pass a ur on the query string or in the request body")
+        : req.CreateResponse(HttpStatusCode.OK, response);
+}
+
+/// <summary>
+/// Make a POST request to the ComputerVision API send the URL to the image in the blob container
+/// </summary>
+/// <param name="blobUrl"></param>
+/// <param name="log"></param>
+/// <returns></returns>
+private static string AnalyseImage(string imageUrl, TraceWriter log)
+{
+    var requestBody = "{\"url\":\"" + imageUrl + "\"}";
+
+    log.Info($"Request body: {requestBody}");
+
+    var queryString = "visualFeatures=Categories,Tags,Description,Faces,ImageType,Color,Adult&language=en";
+
+    var uri = "https://westus.api.cognitive.microsoft.com/vision/v2.0/analyze?" + queryString;
+
+    log.Info($"Calling Uri: {uri}");
+
+    string response = HttpPost(uri, requestBody, log);
+
+    return response;
+}
+
+
+/// <summary>
+/// Make a simple HTTP Post
+/// </summary>
+/// <param name="URI"></param>
+/// <param name="body"></param>
+/// <param name="log"></param>
+/// <returns></returns>
+public static string HttpPost(string URI, string body, TraceWriter log)
+{
+
+    System.Net.WebRequest req = System.Net.WebRequest.Create(URI);
+    req.Method = "POST";
+    req.Headers.Add("Ocp-Apim-Subscription-Key", "[ComputerVisionKey");
+    byte[] bytes = System.Text.Encoding.ASCII.GetBytes(body);
+
+    log.Info($"Posting data");
+
+    req.ContentLength = bytes.Length;
+    System.IO.Stream os = req.GetRequestStream();
+    os.Write(bytes, 0, bytes.Length);
+    os.Close();
+    System.Net.WebResponse resp = req.GetResponse();
+    if (resp == null) return null;
+    System.IO.StreamReader sr = new System.IO.StreamReader(resp.GetResponseStream());
+    return sr.ReadToEnd().Trim();
+}
+
